@@ -65,9 +65,15 @@ def main():
     # list of valid locations
     locs = list(graph.keys())
     # start and goal location
+
+
     start_goal = random.sample(locs, k=2)
     start = start_goal[0]
     goal = start_goal[1]
+    # Odkomentować do zadanie
+    #start = (9,4)
+    #goal = (14,10)
+
 
     # create the environment and viewer
     env = LocWorldEnv(env_size, walls, graph, start, goal)

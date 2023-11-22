@@ -30,7 +30,8 @@ class Agent:
 
         # select action to reach first location in self.path
         # TODO PUT YOUR CODE HERE
-        action = self.path[1];
+        action = self.path[self.t+1]
+        self.t=self.t+1
         # ------------------
 
         return action
@@ -46,6 +47,8 @@ class Agent:
         def distance(point1, point2):
             return m.sqrt((point2[0] - point1[0]) ** 2 + (point2[1] - point1[1]) ** 2)
 
+        #Mało optymalny pomysł, lecz z braku czasu nie zdążyłem zrobić uniwersalnej metody dla graphu, który odstajemy
+        #przy konstruktorze.
         graph = {
             (0, 4): [((5, 5), distance((0, 4), (5, 5))), ((0, 7), distance((0, 4), (0, 7)))],
             (0, 7): [((0, 4), distance((0, 7), (0, 4))), ((3, 8), distance((0, 7), (3, 8)))],
@@ -75,57 +78,53 @@ class Agent:
             (15, 8): [((14, 4), distance((15, 8), (14, 4))), ((14, 10), distance((15, 8), (14, 10)))]
         }
 
-        s = self.loc
-        g = self.goal
+        #Algorytm Dijkstry (lekko zmodyfikowany kod, który przerabialiśmy na zajęciach)
+        start = self.loc
+        goal = self.goal
 
-        def dijkstra(graph, start, goal):
-            # Inicjalizacja struktur danych
-            visited = set()
-            cost = {n: float('inf') for n in graph}
-            parent = {n: None for n in graph}
-            q = queue.PriorityQueue()
+        visited = set()
+        cost = {n: float('inf') for n in graph}
+        parent = {n: None for n in graph}
+        q = queue.PriorityQueue()
 
-            # Dodaj wierzchołek startowy
-            q.put((0, s))
-            cost[s] = 0
+        q.put((0, start))
+        cost[start] = 0
 
-            while not q.empty():
-                _, cur_n = q.get()
+        while not q.empty():
+            _, cur_n = q.get()
 
-                if cur_n in visited:
+            if cur_n in visited:
+                continue
+
+            visited.add(cur_n)
+
+            #print("Eksplorowany wierzchołek:", cur_n)
+
+            if cur_n == goal:
+                break
+
+            for nh, distance in graph[cur_n]:
+                if nh in visited:
                     continue
 
-                visited.add(cur_n)
+                old_cost = cost[nh]
+                new_cost = cost[cur_n] + distance
 
-                if cur_n == goal:
-                    break
+                if new_cost < old_cost:
+                    cost[nh] = new_cost
+                    parent[nh] = cur_n
+                    q.put((new_cost, nh))
 
-                for nh, distance in graph[cur_n]:
-                    if nh in visited:
-                        continue
+        # Odtwórz ścieżkę
+        path = []
+        cur_n = goal
+        while cur_n is not None:
+            path.append(cur_n)
+            cur_n = parent[cur_n]
 
-                    old_cost = cost[nh]
-                    new_cost = cost[cur_n] + distance
 
-                    if new_cost < old_cost:
-                        cost[nh] = new_cost
-                        parent[nh] = cur_n
-                        q.put((new_cost, nh))
-
-            # Odtwórz ścieżkę
-            path = []
-            cur_n = g
-            while cur_n is not None:
-                path.append(cur_n)
-                cur_n = parent[cur_n]
-
-            path.reverse()
-            return path
-
-        shortest_path = dijkstra(graph, s, g)
-        print("Najkrótsza ścieżka:", shortest_path)
-        path = shortest_path;
-
+        path.reverse()
+        print("Otrzymana droga: ",path)
     # ------------------
 
         return path
