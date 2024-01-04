@@ -1,6 +1,8 @@
 # gridutil.py
 #  Some useful functions for navigating square 2d grids
 
+import math
+
 DIRECTIONS = "NESW"
 ORIENTATIONS = {'N': (0, 1), 'E': (1, 0), 'S': (0, -1), 'W': (-1, 0)}
 
@@ -37,3 +39,8 @@ def adjacent(l1,l2):
     x2,y2 = l2
     return (abs(x1-x2) + abs(y2-y1)) == 1
 
+def moveForward(loc, orient, dist):
+    dx = dist * math.cos(orient)
+    dy = dist * math.sin(orient)
+
+    return loc[0] + dx, loc[1] + dy

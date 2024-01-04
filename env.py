@@ -1,32 +1,53 @@
 from graphics import *
 from gridutil import *
 
+import random
+import math
+import numpy as np
+
 
 class LocWorldEnv:
     actions = "turnleft turnright forward".split()
 
-    def __init__(self, size, walls, graph, start_loc, goal_loc):
+    def __init__(self, size, walls, landmarks, start_loc, start_orient, sigma_move_fwd, sigma_move_turn, sigma_perc):
         self.size = size
         self.walls = walls
+        self.landmarks = landmarks
         self.action_sensors = []
         self.locations = {*locations(self.size)}.difference(self.walls)
-        self.graph = graph
         self.start_loc = start_loc
-        self.goal_loc = goal_loc
+        self.start_orient = start_orient
+        self.sigma_move_fwd = sigma_move_fwd
+        self.sigma_move_turn = sigma_move_turn
+        self.sigma_perc = sigma_perc
         self.lifes = 3
         self.reset()
         self.finished = False
 
     def reset(self):
         self.agentLoc = self.start_loc
-        self.agentDir = 'N'
+        self.agentOrient = self.start_orient
+
+    def getPercept(self):
+        percept = []
+        for lmrk in self.landmarks:
+            dx = lmrk[0] - self.agentLoc[0]
+            dy = lmrk[1] - self.agentLoc[1]
+            dist = math.sqrt(dx*dx + dy*dy)
+            percept.append(dist + random.gauss(0.0, self.sigma_perc))
+
+        return percept
 
     def doAction(self, action):
         points = -1
 
-        # only actions that comply with graph
-        if action in self.graph[self.agentLoc]:
-            self.agentLoc = action
+        turn = action[0] + random.gauss(0.0, self.sigma_move_turn)
+        fwd = action[1] + random.gauss(0.0, self.sigma_move_fwd)
+
+        print('executed (turn, fwd): (%.3f, %.3f)' % (turn, fwd))
+
+        self.agentOrient = (self.agentOrient + turn) % (2 * math.pi)
+        self.agentLoc = moveForward(self.agentLoc, self.agentOrient, fwd)
 
         return points  # cost/benefit of action
 
@@ -35,7 +56,7 @@ class LocView:
     # LocView shows a view of a LocWorldEnv. Just hand it an env, and
     #   a window will pop up.
 
-    Size = .2
+    Size = .5
     Points = {'N': (0, -Size, 0, Size), 'E': (-Size, 0, Size, 0),
               'S': (0, Size, 0, -Size), 'W': (Size, 0, -Size, 0)}
 
@@ -54,8 +75,8 @@ class LocView:
                 cells[(x, y)].draw(win)
         self.agt = None
         self.arrow = None
-        self.path_prim = []
-        self.graph_prim = []
+        self.prob_prims = []
+        self.landmark_prims = []
         ccenter = 1.167 * (xySize - .5)
         # self.time = Text(Point(ccenter, (xySize - 1) * .75), "Time").draw(win)
         # self.time.setSize(36)
@@ -69,7 +90,7 @@ class LocView:
         self.info.setSize(20)
         self.info.setFace("courier")
 
-        self.update(state, [])
+        self.update(state)
 
     def setAgent(self, name):
         self.agentName.setText(name)
@@ -80,40 +101,49 @@ class LocView:
     def setInfo(self, info):
         self.info.setText(info)
 
-    def update(self, state, path):
+    def update(self, state, p=None, w=None):
         # View state in exiting window
         for loc, cell in self.cells.items():
             if loc in state.walls:
                 cell.setFill("black")
-            elif loc == state.goal_loc:
-                cell.setFill("yellow")
             else:
                 cell.setFill("white")
 
-        for prim in self.graph_prim:
+        for prim in self.prob_prims:
             prim.undraw()
-        self.graph_prim = []
-        for node, edges in state.graph.items():
-            self.graph_prim.append(self.drawDot(node, "black"))
-            for nh in edges:
-                self.graph_prim.append(self.drawLine(node, nh, "black"))
-
-        for prim in self.path_prim:
+        self.prob_prims = []
+        if w is not None:
+            w = w / np.sum(w)
+            # minimum weight, so it is visible
+            w = np.maximum(w, 0.01 / len(w))
+        if p is not None:
+            for i in range(len(p)):
+                size = 0.1
+                if w is not None:
+                    size = w[i] * 10.0
+                self.prob_prims.append(self.drawDot((p[i, 0], p[i, 1]), 'blue', size))
+        for prim in self.landmark_prims:
             prim.undraw()
-        self.path_prim = []
-        for i in range(len(path)):
-            self.path_prim.append(self.drawDot(path[i]))
-            if i < len(path) - 1:
-                self.path_prim.append(self.drawLine(path[i], path[i + 1]))
+        self.landmark_prims = []
+        for lmrk in state.landmarks:
+            self.landmark_prims.append(self.drawDot(lmrk, 'red', 0.5))
 
         if self.agt:
             self.agt.undraw()
         if state.agentLoc:
-            self.agt = self.drawArrow(state.agentLoc, state.agentDir, 5, self.color)
+            self.agt = self.drawArrowOrient(state.agentLoc, state.agentOrient, 5, self.color)
 
-    def drawDot(self, loc, color="blue"):
+    def drawRect(self, loc, height, color="blue"):
         x, y = loc
-        a = Circle(Point(x, y), .1)
+        a = Rectangle(Point(x - .5, y - .5), Point(x + .5, y - .5 + 4 * height))
+        a.setWidth(0)
+        a.setFill(color)
+        a.draw(self.win)
+        return a
+
+    def drawDot(self, loc, color="blue", size=0.1):
+        x, y = loc
+        a = Circle(Point(x, y), size)
         a.setWidth(1)
         a.setFill(color)
         a.draw(self.win)
@@ -126,6 +156,19 @@ class LocView:
         p2 = Point(x2, y2)
         a = Line(p1, p2)
         a.setWidth(2)
+        a.setFill(color)
+        a.draw(self.win)
+        return a
+
+    def drawArrowOrient(self, loc, orient, width, color):
+        x, y = loc
+        dx = self.Size * math.cos(orient)
+        dy = self.Size * math.sin(orient)
+        p1 = Point(x - dx, y - dy)
+        p2 = Point(x + dx, y + dy)
+        a = Line(p1, p2)
+        a.setWidth(width)
+        a.setArrow('last')
         a.setFill(color)
         a.draw(self.win)
         return a

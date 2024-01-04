@@ -1,133 +1,110 @@
 # prob.py
 # This is
-import queue
+
 import random
 import numpy as np
-import queue as q
-import math as m
+import queue
+import math
 
 from gridutil import *
 
 
 class Agent:
-    def __init__(self, size, walls, graph, loc, dir, goal):
+    def __init__(self, size, landmarks, sigma_move_fwd, sigma_move_turn, sigma_perc):
         self.size = size
-        self.walls = walls
-        self.graph = graph
-        # list of valid locations
-        self.locations = list(self.graph.keys())
-        # dictionary from location to its index in the list
-        self.loc_to_idx = {loc: idx for idx, loc in enumerate(self.locations)}
-        self.loc = loc
-        self.dir = dir
-        self.goal = goal
+        self.landmarks = landmarks
+        self.sigma_move_fwd = sigma_move_fwd
+        self.sigma_move_turn = sigma_move_turn
+        self.sigma_perc = sigma_perc
 
         self.t = 0
-        self.path = self.find_path()
+        self.n = 500
+        # create an initial particle set as 2-D numpy array with size (self.n, 3) (self.p)
+        # and initial weights as 1-D numpy array (self.w)
+        # TODO PUT YOUR CODE HERE
+
+        self.p = np.stack([np.random.random(self.n) * self.size,
+                           np.random.random(self.n) * self.size,
+                           np.random.random(self.n) * 2.0 * math.pi], axis=1)
+
+        self.w = np.ones(self.n) / self.n
+
+        # ------------------
 
     def __call__(self):
-        action = self.loc
+        # turn by -pi/20.0 and move forward by 1
+        action = (-math.pi/20, 1.0)
+        # no turn, only move forward by 1.0
+        # action = (0.0, 1.0)
 
-        # select action to reach first location in self.path
+        # use information about requested action to update posterior
         # TODO PUT YOUR CODE HERE
-        action = self.path[self.t+1]
-        self.t=self.t+1
+
+        self.predict_posterior(action)
+
         # ------------------
+
+        self.t += 1
 
         return action
 
-
-
-    def find_path(self):
-        path = []
-
-        # find path from sel.loc to self.goal
+    def predict_posterior(self, action):
+        # predict posterior using requested action
         # TODO PUT YOUR CODE HERE
 
-        def distance(point1, point2):
-            return m.sqrt((point2[0] - point1[0]) ** 2 + (point2[1] - point1[1]) ** 2)
+        for i in range(self.n):
+            loc = self.p[i, 0:2]
+            orient = self.p[i, 2]
 
-        #Mało optymalny pomysł, lecz z braku czasu nie zdążyłem zrobić uniwersalnej metody dla graphu, który odstajemy
-        #przy konstruktorze.
-        graph = {
-            (0, 4): [((5, 5), distance((0, 4), (5, 5))), ((0, 7), distance((0, 4), (0, 7)))],
-            (0, 7): [((0, 4), distance((0, 7), (0, 4))), ((3, 8), distance((0, 7), (3, 8)))],
-            (1, 10): [((3, 8), distance((1, 10), (3, 8))), ((3, 11), distance((1, 10), (3, 11)))],
-            (3, 8): [((0, 7), distance((3, 8), (0, 7))), ((1, 10), distance((3, 8), (1, 10))),
-                     ((5, 5), distance((3, 8), (5, 5))), ((5, 10), distance((3, 8), (5, 10)))],
-            (3, 11): [((1, 10), distance((3, 11), (1, 10)))],
-            (5, 5): [((0, 4), distance((5, 5), (0, 4))), ((3, 8), distance((5, 5), (3, 8))),
-                     ((9, 4), distance((5, 5), (9, 4)))],
-            (5, 10): [((3, 8), distance((5, 10), (3, 8))), ((8, 8), distance((5, 10), (8, 8))),
-                      ((10, 10), distance((5, 10), (10, 10)))],
-            (8, 7): [((9, 4), distance((8, 7), (9, 4)))],
-            (8, 8): [((5, 10), distance((8, 8), (5, 10))), ((10, 10), distance((8, 8), (10, 10)))],
-            (9, 4): [((5, 5), distance((9, 4), (5, 5))), ((8, 7), distance((9, 4), (8, 7))),
-                     ((10, 7), distance((9, 4), (10, 7)))],
-            (10, 7): [((9, 4), distance((10, 7), (9, 4))), ((10, 10), distance((10, 7), (10, 10))),
-                      ((12, 5), distance((10, 7), (12, 5)))],
-            (10, 10): [((5, 10), distance((10, 10), (5, 10))), ((8, 8), distance((10, 10), (8, 8))),
-                       ((12, 9), distance((10, 10), (12, 9)))],
-            (12, 5): [((10, 7), distance((12, 5), (10, 7))), ((12, 7), distance((12, 5), (12, 7)))],
-            (12, 7): [((12, 5), distance((12, 7), (12, 5))), ((12, 9), distance((12, 7), (12, 9))),
-                      ((15, 8), distance((12, 7), (15, 8)))],
-            (12, 9): [((10, 10), distance((12, 9), (10, 10))), ((12, 7), distance((12, 9), (12, 7))),
-                      ((14, 10), distance((12, 9), (14, 10)))],
-            (14, 4): [((15, 8), distance((14, 4), (15, 8)))],
-            (14, 10): [((12, 9), distance((14, 10), (12, 9))), ((15, 8), distance((14, 10), (15, 8)))],
-            (15, 8): [((14, 4), distance((15, 8), (14, 4))), ((14, 10), distance((15, 8), (14, 10)))]
-        }
+            orient = (orient+action[0]+np.random.randn(1)*self.sigma_move_turn % (2.0*math.pi))
+            loc = moveForward(loc, orient, action[1]+np.random.randn(1)*self.sigma_move_fwd)
+            self.p[i, 0] = loc[0]
+            self.p[i, 1] = loc[1]
+            self.p[i, 2] = orient
 
-        #Algorytm Dijkstry (lekko zmodyfikowany kod, który przerabialiśmy na zajęciach)
-        start = self.loc
-        goal = self.goal
+        # ------------------
 
-        visited = set()
-        cost = {n: float('inf') for n in graph}
-        parent = {n: None for n in graph}
-        q = queue.PriorityQueue()
+        # this function does not return anything
+        return
 
-        q.put((0, start))
-        cost[start] = 0
+    def calculate_weights(self, percept):
+        # calculate weights using percept
+        # TODO PUT YOUR CODE HERE
 
-        while not q.empty():
-            _, cur_n = q.get()
+        for i in range(self.n):
+            curw = 1
+            for l in range(len(self.landmarks)):
+                ux = self.p[i, 0] - self.landmarks[l][0]
+                uy = self.p[i, 1] - self.landmarks[l][1]
+                u = math.sqrt(pow(ux, 2) + pow(uy, 2))
+                dif = u - percept[l]
+                curw *= math.exp(-0.5 * (dif ** 2) / pow(self.sigma_perc, 2))
 
-            if cur_n in visited:
-                continue
+            self.w[i] = curw
+        self.w = self.w / np.sum(self.w)
 
-            visited.add(cur_n)
+        # ------------------
 
-            #print("Eksplorowany wierzchołek:", cur_n)
+        # this function does not return anything
+        return
 
-            if cur_n == goal:
-                break
+    def correct_posterior(self):
+        new_p = []
+        index = 0
+        beta = 0.0
+        mw = max(self.w)
+        for i in range(self.n):
+            beta += np.random.random() * 2 * mw
+            while beta > self.w[index]:
+                beta -= self.w[index]
+                index = (index + 1) % self.n
+            new_p.append(self.p[index].tolist())
 
-            for nh, distance in graph[cur_n]:
-                if nh in visited:
-                    continue
+        self.p = np.array(new_p)
+        return
 
-                old_cost = cost[nh]
-                new_cost = cost[cur_n] + distance
+    def get_particles(self):
+        return self.p
 
-                if new_cost < old_cost:
-                    cost[nh] = new_cost
-                    parent[nh] = cur_n
-                    q.put((new_cost, nh))
-
-        # Odtwórz ścieżkę
-        path = []
-        cur_n = goal
-        while cur_n is not None:
-            path.append(cur_n)
-            cur_n = parent[cur_n]
-
-
-        path.reverse()
-        print("Otrzymana droga: ",path)
-    # ------------------
-
-        return path
-
-    def get_path(self):
-        return self.path
+    def get_weights(self):
+        return self.w
